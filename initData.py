@@ -1,11 +1,18 @@
 import os
-
-
+from omniglot import Omniglot
+import numpy as np
+import  torchvision.transforms as transforms
+from    PIL import Image
 class Prehandler(object):
     urls = [
         'https://github.com/brendenlake/omniglot/raw/master/python/images_background.zip',
         'https://github.com/brendenlake/omniglot/raw/master/python/images_evaluation.zip'
     ]
+    rawFolder = 'raw'
+    processedFloder = 'processed'
+    root = 'omniglot'
+    processedPath = os.path.join(root, processedFloder)
+    rawPath = os.path.join(root, rawFolder)
 
     def __init__(self, nWay, kShot, kQuery, imgSize):
         """
@@ -19,18 +26,42 @@ class Prehandler(object):
             prehandled data
         """
         super(Prehandler, self).__init__()
-        if not os.path.exists(os.path.join('omniglot', 'omniglot.npy')):
+        if not os.path.exists(os.path.join(self.rawPath, 'images_background.zip')):
             # if not exist,then download data
             self.download()
-            self.data=
+        if not os.path.exists(os.path.join('omniglot','omniglot.npy')):
+            self.data=Omniglot(self.processedPath,
+                transform=transforms.Compose([lambda x: Image.open(x).convert('L'),
+                                                            lambda x: x.resize((imgSize, imgSize)),
+                                                            lambda x: np.reshape(x, (imgSize, imgSize, 1)),
+                                                            lambda x: np.transpose(x, [2, 0, 1]),
+                                                            lambda x: x/255.]))
+            temp=dict() #{label: 20 imgs} 1623 items in total
+            print("ok?")
+            for (img,label) in self.data:
+                if label%10==0:
+                    print("label:",label)
+                if label in temp.keys():
+                    temp[label].append(img)
+                else:
+                    temp[label]=[img]
+            print(len(temp))
+            self.data=[]
+            for label,imgs in temp.items():
+                self.data.append(np.array(imgs))
+            self.data=np.array(self.data).astype(np.float)
+
+            print(self.data.shape)
+            np.save(os.path.join(root,'omniglot.npy'))
+        # self.data=np.load(os.path.join('omniglot', 'omniglot.npy'))
+        # print(data.shape)
+
 
     def download(self):
         from six.moves import urllib
         import zipfile
         import errno
-        rawFolder = 'raw'
-        processedFloder = 'processed'
-        root = 'omniglot'
+
         try:
             os.makedirs(os.path.join(root, rawFolder))
             os.makedirs(os.path.join(root, processedFloder))
@@ -44,12 +75,11 @@ class Prehandler(object):
             print("downloading : "+url)
             data = urllib.request.urlopen(url)
             filename = url.rpartition('/')[2]
-            filePath = os.path.join(root, rawFolder, filename)
+            filePath = os.path.join(rawPath, filename)
             with open(filePath,'wb') as f:
                 f.write(data.read())
-            processedPath = os.path.join(root, processedFloder, filename)
             zip = zipfile.ZipFile(filePath, 'r')
-            zip.extractall(processedPath)
+            zip.extractall(self.processedPath)
             zip.close()
         print("download finished")
 
