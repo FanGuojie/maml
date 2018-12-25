@@ -3,12 +3,41 @@ import torch
 from Maml import Meta
 from initData import Prehandler
 
+
 def main(args):
     print(args)
+        config = [
+        ('conv2d', [64, 1, 3, 3, 2, 0]),
+        ('relu', [True]),
+        ('bn', [64]),
+        ('conv2d', [64, 64, 3, 3, 2, 0]),
+        ('relu', [True]),
+        ('bn', [64]),
+        ('conv2d', [64, 64, 3, 3, 2, 0]),
+        ('relu', [True]),
+        ('bn', [64]),
+        ('conv2d', [64, 64, 2, 2, 1, 0]),
+        ('relu', [True]),
+        ('bn', [64]),
+        ('flatten', []),
+        ('linear', [args.n_way, 64])
+    ]
     device = torch.device('cuda', 0)
-    maml = Meta(args).to(device)
-    data = Prehandler(nWay=args.nWay, kShot=args.kShot,
+    maml = Meta(args,config).to(device)
+    data = Prehandler(batchSize=args.taskNum, nWay=args.nWay, kShot=args.kShot,
                       kQuery=args.kQuery, imgSize=args.imgSize)
+
+    for step in range(args.epoch):
+        xSpt, ySpt, xQry, yQry = data.next()
+        xSpt, ySpt, xQry, yQry = torch.from_numpy(xSpt).to(device), torch.from_numpy(ySpt).to(
+            device), torch.from_numpy(xQry).to(device), torch.from_numpy(yQry).to(device),
+        #  xSpt.shape      ([32, 5, 1, 28, 28])
+        #  ySpt.shape      ([32, 75])
+        #  xQry.shape      ([32, 75, 1, 28, 28])
+        #  yQry.shape      ([32, 75])
+
+        # set training=True to update running_mean, running_vaiance,bn_weights,bn_bias
+        accs = maml(xSpt, ySpt, xQry, yQry) 
 
 
 if __name__ == '__main__':
