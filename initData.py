@@ -1,194 +1,202 @@
-import os
-from omniglot import Omniglot
-import numpy as np
-import torchvision.transforms as transforms
-from PIL import Image
+from    omniglot import Omniglot
+import  torchvision.transforms as transforms
+from    PIL import Image
+import  os.path
+import  numpy as np
 
 
-class Prehandler(object):
-    urls = [
-        'https://github.com/brendenlake/omniglot/raw/master/python/images_background.zip',
-        'https://github.com/brendenlake/omniglot/raw/master/python/images_evaluation.zip'
-    ]
-    rawFolder = 'raw'
-    processedFloder = 'processed'
-    root = 'omniglot'
-    processedPath = os.path.join(root, processedFloder)
-    rawPath = os.path.join(root, rawFolder)
+class Prehandler:
 
-    def __init__(self, batchSize, nWay, kShot, kQuery, imgSize):
+    def __init__(self,  batchSize, nWay, kShot, kQuery, imgSize):
         """
-        meaning: init data
-        :param:
-            nWay: n ways 
-            kShot: k shot
-            kQuery: num of query set elements
-            imgSize: image size
-        :return:
-            prehandled data
+        Different from mnistNShot, the
+        :param root:
+        :param batchSize: task num
+        :param nWay:
+        :param kShot:
+        :param k_qry:
+        :param imgSize:
         """
-        super(Prehandler, self).__init__()
+        root='data'
         self.resize = imgSize
-        self.batchSize = batchSize
-        self.nWay = nWay
-        self.kShot = kShot
-        self.kQuery = kQuery
-        self.imgSize = imgSize
+        if not os.path.isfile(os.path.join(root, 'omniglot.npy')):
+            # if root/data.npy does not exist, just download it
+            self.x = Omniglot(root, download=True,
+                              transform=transforms.Compose([lambda x: Image.open(x).convert('L'),
+                                                            lambda x: x.resize((imgSize, imgSize)),
+                                                            lambda x: np.reshape(x, (imgSize, imgSize, 1)),
+                                                            lambda x: np.transpose(x, [2, 0, 1]),
+                                                            lambda x: x/255.])
+                              )
 
-        if not os.path.exists(os.path.join(self.rawPath, 'images_background.zip')):
-            # if not exist,then download data
-            self.download()
-        if not os.path.exists(os.path.join('omniglot', 'omniglot.npy')):
-            self.data = Omniglot(self.processedPath,
-                                 transform=transforms.Compose([lambda x: Image.open(x).convert('L'),
-                                                               lambda x: x.resize(
-                                                                   (imgSize, imgSize)),
-                                                               lambda x: np.reshape(
-                                                                   x, (imgSize, imgSize, 1)),
-                                                               lambda x: np.transpose(
-                                                                   x, [2, 0, 1]),
-                                                               lambda x: x/255.]))
-            temp = dict()  # {label: 20 imgs} 1623 items in total
-            for (img, label) in self.data:
+            temp = dict()  # {label:img1, img2..., 20 imgs, label2: img1, img2,... in total, 1623 label}
+            for (img, label) in self.x:
                 if label in temp.keys():
                     temp[label].append(img)
                 else:
                     temp[label] = [img]
-            print(len(temp))
-            self.data = []
-            for label, imgs in temp.items():
-                self.data.append(np.array(imgs))
-            self.data = np.array(self.data).astype(np.float)
 
-            print(self.data.shape)
-            np.save(self.data, os.path.join(self.root, 'omniglot.npy'))
+            self.x = []
+            for label, imgs in temp.items():  # labels info deserted , each label contains 20imgs
+                self.x.append(np.array(imgs))
+
+            # as different class may have different number of imgs
+            self.x = np.array(self.x).astype(np.float)  # [[20 imgs],..., 1623 classes in total]
+            # each character contains 20 imgs
+            print('data shape:', self.x.shape)  # [1623, 20, 84, 84, 1]
+            temp = []  # Free memory
+            # save all dataset into npy file.
+            np.save(os.path.join(root, 'omniglot.npy'), self.x)
+            print('write into omniglot.npy.')
         else:
-            print("loading data")
-            self.data = np.load(os.path.join(self.root, 'omniglot.npy'))
-            print("data shape:\t", self.data.shape)
-        self.trainData, self.testData = self.data[:1200], self.data[1200:]
-        self.index = {'train': 0, 'test': 0}
-        self.datasets = {'train': self.trainData, 'test': self.testData}
-        self.datasetsCache = {'train': self.loadData(
-            self.trainData), 'test': self.loadData(self.testData)}
-        # self.data=np.load(os.path.join('omniglot', 'omniglot.npy'))
-        # print(data.shape)
+            # if data.npy exists, just load it.
+            self.x = np.load(os.path.join(root, 'omniglot.npy'))
+            print('load from omniglot.npy.')
 
-    def loadData(self, data):
-        """
-        meaning:
-            prepare batch data for N-shot learning
-        :param:
-            data : [classNum,20,84,84,1]
-        :return:
-            [xSpt,ySpt,xQry,yQry] ready to be fed to network
-        """
-        surpportSize = self.kShot*self.nWay
-        querySize = self.kQuery*self.nWay
-        dataCache = []
+        # [1623, 20, 84, 84, 1]
+        # TODO: can not shuffle here, we must keep training and test set distinct!
+        self.x_train, self.x_test = self.x[:1200], self.x[1200:]
 
+        # self.normalization()
+
+        self.batchSize = batchSize
+        self.n_cls = self.x.shape[0]  # 1623
+        self.nWay = nWay  # n way
+        self.kShot = kShot  # k shot
+        self.kQuery = kQuery  # k query
+        assert (kShot + kQuery) <=20
+
+        # save pointer of current read batch in total cache
+        self.indexes = {"train": 0, "test": 0}
+        self.datasets = {"train": self.x_train, "test": self.x_test}  # original data cached
+        print("data: train", self.x_train.shape, "test", self.x_test.shape)
+
+        self.datasets_cache = {"train": self.load_data_cache(self.datasets["train"]),  # current epoch data cached
+                               "test": self.load_data_cache(self.datasets["test"])}
+
+    def normalization(self):
+        """
+        Normalizes our data, to have a mean of 0 and sdt of 1
+        """
+        self.mean = np.mean(self.x_train)
+        self.std = np.std(self.x_train)
+        self.max = np.max(self.x_train)
+        self.min = np.min(self.x_train)
+        # print("before norm:", "mean", self.mean, "max", self.max, "min", self.min, "std", self.std)
+        self.x_train = (self.x_train - self.mean) / self.std
+        self.x_test = (self.x_test - self.mean) / self.std
+
+        self.mean = np.mean(self.x_train)
+        self.std = np.std(self.x_train)
+        self.max = np.max(self.x_train)
+        self.min = np.min(self.x_train)
+
+    # print("after norm:", "mean", self.mean, "max", self.max, "min", self.min, "std", self.std)
+
+    def load_data_cache(self, data_pack):
+        """
+        Collects several batches data for N-shot learning
+        :param data_pack: [cls_num, 20, 84, 84, 1]
+        :return: A list with [support_set_x, support_set_y, target_x, target_y] ready to be fed to our networks
+        """
+        #  take 5 way 1 shot as example: 5 * 1
+        setsz = self.kShot * self.nWay
+        querysz = self.kQuery * self.nWay
+        data_cache = []
+
+        # print('preload next 50 caches of batchSize of batch.')
         for sample in range(10):  # num of episodes
 
-            xSpts, ySpts, xQrys, yQrys = [], [], [], []
-            for i in range(self.batchSize):
-                xSpt, ySpt, xQry, yQry = [], [], [], []
-                selectedClass = np.random.choice(
-                    data.shape[0], self.nWay, False)
+            x_spts, y_spts, x_qrys, y_qrys = [], [], [], []
+            for i in range(self.batchSize):  # one batch means one set
 
-                for j, curClass in enumerate(selectedClass):
-                    selectedImg = np.random.choice(
-                        20, self.kShot+self.kQuery, False)
+                x_spt, y_spt, x_qry, y_qry = [], [], [], []
+                selected_cls = np.random.choice(data_pack.shape[0], self.nWay, False)
 
-                    #meta-training and meta-test
-                    xSpt.append(data[curClass][selectedImg[:self.kShot]])
-                    xQry.append(data[curClass][selectedImg[self.kShot:]])
-                    ySpt.append([j for _ in range(self.kShot)])
-                    yQry.append([j for _ in range(self.kQuery)])
+                for j, cur_class in enumerate(selected_cls):
+
+                    selected_img = np.random.choice(20, self.kShot + self.kQuery, False)
+
+                    # meta-training and meta-test
+                    x_spt.append(data_pack[cur_class][selected_img[:self.kShot]])
+                    x_qry.append(data_pack[cur_class][selected_img[self.kShot:]])
+                    y_spt.append([j for _ in range(self.kShot)])
+                    y_qry.append([j for _ in range(self.kQuery)])
 
                 # shuffle inside a batch
-                shuffleIndex = np.random.permutation(self.nWay*self.kShot)
-                xSpt = np.array(xSpt).reshape(
-                    self.nWay*self.kShot, 1, self.resize, self.resize)
-                ySpt = np.array(ySpt).reshape(
-                    self.nWay*self.kShot)[shuffleIndex]
-                shuffleIndex = np.random.permutation(self.nWay*self.kQuery)
-                xQry = np.array(xQry).reshape(
-                    self.nWay*self.kQuery, 1, self.resize, self.resize)
-                yQry = np.array(yQry).reshape(
-                    self.nWay*self.kQuery)[shuffleIndex]
+                perm = np.random.permutation(self.nWay * self.kShot)
+                x_spt = np.array(x_spt).reshape(self.nWay * self.kShot, 1, self.resize, self.resize)[perm]
+                y_spt = np.array(y_spt).reshape(self.nWay * self.kShot)[perm]
+                perm = np.random.permutation(self.nWay * self.kQuery)
+                x_qry = np.array(x_qry).reshape(self.nWay * self.kQuery, 1, self.resize, self.resize)[perm]
+                y_qry = np.array(y_qry).reshape(self.nWay * self.kQuery)[perm]
 
-                # append [surpportSize,1,85m85] => [b,setSizem1m84,84]
-                xSpts.append(xSpt)
-                xQrys.append(xQry)
-                ySpts.append(ySpt)
-                yQrys.append(yQry)
-            # [b, surpportSize, 1, 84 , 84]
-            xSpts = np.array(xSpts).astype(np.float32).reshape(
-                self.batchSize, surpportSize, 1, self.resize,self.resize)
-            ySpts = np.array(ySpts).astype(np.int).reshape(
-                self.batchSize, surpportSize)
-            # [b, querytSize, 1, 84 , 84]
-            xQrys = np.array(xQrys).astype(
-                np.float32).reshape(self.batchSize, querySize, 1, self.resize,self.resize)
-            yQrys = np.array(yQrys).astype(
-                np.int).reshape(self.batchSize, querySize)
-            dataCache.append([xSpts, ySpts, xQrys, yQrys])
-        return dataCache
+                # append [sptsz, 1, 84, 84] => [b, setsz, 1, 84, 84]
+                x_spts.append(x_spt)
+                y_spts.append(y_spt)
+                x_qrys.append(x_qry)
+                y_qrys.append(y_qry)
+
+
+            # [b, setsz, 1, 84, 84]
+            x_spts = np.array(x_spts).astype(np.float32).reshape(self.batchSize, setsz, 1, self.resize, self.resize)
+            y_spts = np.array(y_spts).astype(np.int).reshape(self.batchSize, setsz)
+            # [b, qrysz, 1, 84, 84]
+            x_qrys = np.array(x_qrys).astype(np.float32).reshape(self.batchSize, querysz, 1, self.resize, self.resize)
+            y_qrys = np.array(y_qrys).astype(np.int).reshape(self.batchSize, querysz)
+
+            data_cache.append([x_spts, y_spts, x_qrys, y_qrys])
+
+        return data_cache
 
     def next(self, mode='train'):
         """
-        meaning:
-            gets next batch from the dataset with name
-        :param:
-            mode: 'train' or 'test'
+        Gets next batch from the dataset with name.
+        :param mode: The name of the splitting (one of "train", "val", "test")
         :return:
-            xSpt, ySpt, xQry, yQry
         """
-        # update if indexes is larger than cache
-        if self.index[mode] >= len(self.datasetsCache[mode]):
-            self.index[mode] = 0
-            self.datasetsCache[mode] = self.loadData(self.datasets[mode])
+        # update cache if indexes is larger cached num
+        if self.indexes[mode] >= len(self.datasets_cache[mode]):
+            self.indexes[mode] = 0
+            self.datasets_cache[mode] = self.load_data_cache(self.datasets[mode])
 
-        nextBatch = self.datasetsCache[mode][self.index[mode]]
-        self.index[mode] += 1
-        return nextBatch
+        next_batch = self.datasets_cache[mode][self.indexes[mode]]
+        self.indexes[mode] += 1
 
-    def download(self):
-        from six.moves import urllib
-        import zipfile
-        import errno
+        return next_batch
 
-        try:
-            os.makedirs(os.path.join(root, rawFolder))
-            os.makedirs(os.path.join(root, processedFloder))
-        except Exception as e:
-            if e.errno == errno.EEXIST:
-                pass
-            else:
-                raise
 
-        for url in self.urls:
-            print("downloading : "+url)
-            data = urllib.request.urlopen(url)
-            filename = url.rpartition('/')[2]
-            filePath = os.path.join(rawPath, filename)
-            with open(filePath, 'wb') as f:
-                f.write(data.read())
-            zip = zipfile.ZipFile(filePath, 'r')
-            zip.extractall(self.processedPath)
-            zip.close()
-        print("download finished")
+
 
 
 if __name__ == '__main__':
-    import argparse
-    arg = argparse.ArgumentParser()
-    arg.add_argument('--nWay', type=int, help='n way', default=5)
-    arg.add_argument('--kShot', type=int,
-                     help='k shot for support set', default=1)
-    arg.add_argument('--kQuery', type=int,
-                     help='k shot for query set', default=15)
-    arg.add_argument('--imgSize', type=int, help='image size', default=28)
-    args = arg.parse_args()
-    data = Prehandler(nWay=args.nWay, kShot=args.kShot,
-                      kQuery=args.kQuery, imgSize=args.imgSize)
+
+    import  time
+    import  torch
+    import  visdom
+
+    # plt.ion()
+    viz = visdom.Visdom(env='omniglot_view')
+
+    db = OmniglotNShot('db/omniglot', batchSize=20, nWay=5, kShot=5, kQuery=15, imgSize=64)
+
+    for i in range(1000):
+        x_spt, y_spt, x_qry, y_qry = db.next('train')
+
+
+        # [b, setsz, h, w, c] => [b, setsz, c, w, h] => [b, setsz, 3c, w, h]
+        x_spt = torch.from_numpy(x_spt)
+        x_qry = torch.from_numpy(x_qry)
+        y_spt = torch.from_numpy(y_spt)
+        y_qry = torch.from_numpy(y_qry)
+        batchSize, setsz, c, h, w = x_spt.size()
+
+
+        viz.images(x_spt[0], nrow=5, win='x_spt', opts=dict(title='x_spt'))
+        viz.images(x_qry[0], nrow=15, win='x_qry', opts=dict(title='x_qry'))
+        viz.text(str(y_spt[0]), win='y_spt', opts=dict(title='y_spt'))
+        viz.text(str(y_qry[0]), win='y_qry', opts=dict(title='y_qry'))
+
+
+        time.sleep(10)
+

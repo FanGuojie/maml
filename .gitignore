@@ -1,2 +1,5 @@
-/omniglot
+/data
 /__pycache__
+/log
+/log2
+/.idea
