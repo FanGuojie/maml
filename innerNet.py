@@ -6,38 +6,30 @@ import  numpy as np
 
 
 class Learner(nn.Module):
-    """
-
-    """
 
     def __init__(self,nWay):
-        """
-
-        :param config: network config file, type:list of (string, list)
-        """
         super(Learner, self).__init__()
 
 
         self.config = [
-         ('conv2d', [64, 1, 3, 3, 2, 0]),
+         ('conv2d', [32, 1, 3, 3, 2, 0]),
+         ('relu', [True]),
+         ('bn', [32]),
+         ('conv2d', [64, 32, 3, 3, 2, 0]),
          ('relu', [True]),
          ('bn', [64]),
-         ('conv2d', [64, 64, 3, 3, 2, 0]),
+         ('conv2d', [128, 64, 3, 3, 2, 0]),
          ('relu', [True]),
-         ('bn', [64]),
-         ('conv2d', [64, 64, 3, 3, 2, 0]),
+         ('bn', [128]),
+         ('conv2d', [128, 128, 2, 2, 1, 0]),
          ('relu', [True]),
-         ('bn', [64]),
-         ('conv2d', [64, 64, 2, 2, 1, 0]),
-         ('relu', [True]),
-         ('bn', [64]),
+         ('bn', [128]),
          ('flatten', []),
-         ('linear', [nWay, 64])
+         ('linear', [nWay, 128])
          ]
 
 
         # this dict contains all tensors needed to be optimized
-        # running_mean and running_var
         self.vars = nn.ParameterList()
         self.vars_bn = nn.ParameterList()
 
@@ -48,7 +40,6 @@ class Learner(nn.Module):
                 # gain=1 according to cbfin's implementation
                 torch.nn.init.kaiming_normal_(w)
                 self.vars.append(w)
-                # [ch_out]
                 self.vars.append(nn.Parameter(torch.zeros(param[0])))
 
             elif name is 'convt2d':
@@ -76,7 +67,6 @@ class Learner(nn.Module):
                 # [ch_out]
                 self.vars.append(nn.Parameter(torch.zeros(param[0])))
 
-                # must set requires_grad=False
                 running_mean = nn.Parameter(torch.zeros(param[0]), requires_grad=False)
                 running_var = nn.Parameter(torch.ones(param[0]), requires_grad=False)
                 self.vars_bn.extend([running_mean, running_var])
@@ -93,51 +83,8 @@ class Learner(nn.Module):
 
 
 
-    def extra_repr(self):
-        info = ''
-
-        for name, param in self.config:
-            if name is 'conv2d':
-                tmp = 'conv2d:(ch_in:%d, ch_out:%d, k:%dx%d, stride:%d, padding:%d)'\
-                      %(param[1], param[0], param[2], param[3], param[4], param[5],)
-                info += tmp + '\n'
-
-            elif name is 'convt2d':
-                tmp = 'convTranspose2d:(ch_in:%d, ch_out:%d, k:%dx%d, stride:%d, padding:%d)'\
-                      %(param[0], param[1], param[2], param[3], param[4], param[5],)
-                info += tmp + '\n'
-
-            elif name is 'linear':
-                tmp = 'linear:(in:%d, out:%d)'%(param[1], param[0])
-                info += tmp + '\n'
-
-            elif name is 'leakyrelu':
-                tmp = 'leakyrelu:(slope:%f)'%(param[0])
-                info += tmp + '\n'
-
-
-            elif name is 'avg_pool2d':
-                tmp = 'avg_pool2d:(k:%d, stride:%d, padding:%d)'%(param[0], param[1], param[2])
-                info += tmp + '\n'
-            elif name is 'max_pool2d':
-                tmp = 'max_pool2d:(k:%d, stride:%d, padding:%d)'%(param[0], param[1], param[2])
-                info += tmp + '\n'
-            elif name in ['flatten', 'tanh', 'relu', 'upsample', 'reshape', 'sigmoid', 'use_logits', 'bn']:
-                tmp = name + ':' + str(tuple(param))
-                info += tmp + '\n'
-            else:
-                raise NotImplementedError
-
-        return info
-
-
-
     def forward(self, x, vars=None, bn_training=True):
         """
-        This function can be called by finetunning, however, in finetunning, we dont wish to update
-        running_mean/running_var. Thought weights/bias of bn is updated, it has been separated by fast_weights.
-        Indeed, to not update running_mean/running_var, we need set update_bn_statistics=False
-        but weight/bias will be updated and not dirty initial theta parameters via fast_weiths.
         :param x: [b, 1, 28, 28]
         :param vars:
         :param bn_training: set False to not update
