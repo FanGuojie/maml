@@ -74,24 +74,6 @@ class Prehandler:
         self.datasets_cache = {"train": self.load_data_cache(self.datasets["train"]),  # current epoch data cached
                                "test": self.load_data_cache(self.datasets["test"])}
 
-    def normalization(self):
-        """
-        Normalizes our data, to have a mean of 0 and sdt of 1
-        """
-        self.mean = np.mean(self.x_train)
-        self.std = np.std(self.x_train)
-        self.max = np.max(self.x_train)
-        self.min = np.min(self.x_train)
-        # print("before norm:", "mean", self.mean, "max", self.max, "min", self.min, "std", self.std)
-        self.x_train = (self.x_train - self.mean) / self.std
-        self.x_test = (self.x_test - self.mean) / self.std
-
-        self.mean = np.mean(self.x_train)
-        self.std = np.std(self.x_train)
-        self.max = np.max(self.x_train)
-        self.min = np.min(self.x_train)
-
-    # print("after norm:", "mean", self.mean, "max", self.max, "min", self.min, "std", self.std)
 
     def load_data_cache(self, data_pack):
         """
@@ -171,32 +153,5 @@ class Prehandler:
 
 if __name__ == '__main__':
 
-    import  time
-    import  torch
-    import  visdom
-
-    # plt.ion()
-    viz = visdom.Visdom(env='omniglot_view')
-
-    db = OmniglotNShot('db/omniglot', batchSize=20, nWay=5, kShot=5, kQuery=15, imgSize=64)
-
-    for i in range(1000):
-        x_spt, y_spt, x_qry, y_qry = db.next('train')
-
-
-        # [b, setsz, h, w, c] => [b, setsz, c, w, h] => [b, setsz, 3c, w, h]
-        x_spt = torch.from_numpy(x_spt)
-        x_qry = torch.from_numpy(x_qry)
-        y_spt = torch.from_numpy(y_spt)
-        y_qry = torch.from_numpy(y_qry)
-        batchSize, setsz, c, h, w = x_spt.size()
-
-
-        viz.images(x_spt[0], nrow=5, win='x_spt', opts=dict(title='x_spt'))
-        viz.images(x_qry[0], nrow=15, win='x_qry', opts=dict(title='x_qry'))
-        viz.text(str(y_spt[0]), win='y_spt', opts=dict(title='y_spt'))
-        viz.text(str(y_qry[0]), win='y_qry', opts=dict(title='y_qry'))
-
-
-        time.sleep(10)
+    pass
 

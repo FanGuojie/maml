@@ -154,22 +154,6 @@ class Learner(nn.Module):
         return x
 
 
-    def zero_grad(self, vars=None):
-        """
-
-        :param vars:
-        :return:
-        """
-        with torch.no_grad():
-            if vars is None:
-                for p in self.vars:
-                    if p.grad is not None:
-                        p.grad.zero_()
-            else:
-                for p in vars:
-                    if p.grad is not None:
-                        p.grad.zero_()
-
     def parameters(self):
         """
         override this function since initial parameters will return with a generator.

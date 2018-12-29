@@ -6,7 +6,7 @@ from initData import Prehandler
 import argparse
 from tensorboardX import SummaryWriter
 from Meta import Meta
-name='tmp'
+name='5way1shot'
 writer = SummaryWriter(name)
 
 
